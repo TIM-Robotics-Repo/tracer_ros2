@@ -10,26 +10,25 @@
 #ifndef TRACER_MESSENGER_HPP
 #define TRACER_MESSENGER_HPP
 
-#include <string>
-#include <mutex>
 #include <memory>
+#include <mutex>
+#include <string>
 
-#include <rclcpp/rclcpp.hpp>
-#include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/twist.hpp>
-#include <tf2_ros/transform_broadcaster.h>
+#include <nav_msgs/msg/odometry.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_ros/transform_broadcaster.h>
 
-#include "tracer_msgs/msg/tracer_status.hpp"
 #include "tracer_msgs/msg/tracer_light_cmd.hpp"
+#include "tracer_msgs/msg/tracer_status.hpp"
 
 #include "ugv_sdk/mobile_robot/tracer_robot.hpp"
 #include "ugv_sdk/utilities/protocol_detector.hpp"
 
 namespace westonrobot {
-template <typename TracerType>
-class TracerMessenger {
- public:
+template <typename TracerType> class TracerMessenger {
+public:
   TracerMessenger(std::shared_ptr<TracerType> tracer, rclcpp::Node *node)
       : tracer_(tracer), node_(node) {}
 
@@ -54,10 +53,11 @@ class TracerMessenger {
         "/cmd_vel", 5,
         std::bind(&TracerMessenger::TwistCmdCallback, this,
                   std::placeholders::_1));
-    light_cmd_sub_ = node_->create_subscription<tracer_msgs::msg::TracerLightCmd>(
-        "/light_control", 5,
-        std::bind(&TracerMessenger::LightCmdCallback, this,
-                  std::placeholders::_1));
+    light_cmd_sub_ =
+        node_->create_subscription<tracer_msgs::msg::TracerLightCmd>(
+            "/light_control", 5,
+            std::bind(&TracerMessenger::LightCmdCallback, this,
+                      std::placeholders::_1));
 
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(node_);
   }
@@ -78,17 +78,30 @@ class TracerMessenger {
     // publish tracer state message
     tracer_msgs::msg::TracerStatus status_msg;
 
-    status_msg.header.stamp = current_time_;
+    // status_msg.header.stamp = current_time_;
 
     status_msg.linear_velocity = state.motion_state.linear_velocity;
     status_msg.angular_velocity = state.motion_state.angular_velocity;
 
-    //status_msg.vehicle_state = state.system_state.vehicle_state;
+    // status_msg.vehicle_state = state.system_state.vehicle_state;
     status_msg.control_mode = state.system_state.control_mode;
     status_msg.error_code = state.system_state.error_code;
     status_msg.battery_voltage = state.system_state.battery_voltage;
 
     auto actuator = tracer_->GetActuatorState();
+
+    static auto convert_sdkclock_to_double_epoch_nano =
+        [](const std::chrono::time_point<SdkClock> &stamp) {
+          return static_cast<double>(
+              std::chrono::time_point_cast<std::chrono::nanoseconds>(stamp)
+                  .time_since_epoch()
+                  .count());
+        };
+    auto time_offset = node_->now().nanoseconds() -
+                       convert_sdkclock_to_double_epoch_nano(SdkClock::now());
+    status_msg.header.stamp =
+        rclcpp::Time(time_offset + convert_sdkclock_to_double_epoch_nano(
+                                       actuator.time_stamp));
 
     for (int i = 0; i < 2; ++i) {
       // actuator_hs_state
@@ -98,26 +111,26 @@ class TracerMessenger {
           actuator.actuator_hs_state[i].rpm;
       status_msg.actuator_states[motor_id].current =
           actuator.actuator_hs_state[i].current;
-      //status_msg.actuator_states[motor_id].pulse_count =
-          //actuator.actuator_hs_state[i].pulse_count;
+      // status_msg.actuator_states[motor_id].pulse_count =
+      // actuator.actuator_hs_state[i].pulse_count;
 
       // actuator_ls_state
-      //motor_id = actuator.actuator_ls_state[i].motor_id;
+      // motor_id = actuator.actuator_ls_state[i].motor_id;
 
-      //status_msg.actuator_states[motor_id].driver_voltage =
-          //actuator.actuator_ls_state[i].driver_voltage;
-      //status_msg.actuator_states[motor_id].driver_temperature =
-          //actuator.actuator_ls_state[i].driver_temp;
-      //status_msg.actuator_states[motor_id].motor_temperature =
-          //actuator.actuator_ls_state[i].motor_temp;
-      //status_msg.actuator_states[motor_id].driver_state =
-          //actuator.actuator_ls_state[i].driver_state;
+      // status_msg.actuator_states[motor_id].driver_voltage =
+      // actuator.actuator_ls_state[i].driver_voltage;
+      // status_msg.actuator_states[motor_id].driver_temperature =
+      // actuator.actuator_ls_state[i].driver_temp;
+      // status_msg.actuator_states[motor_id].motor_temperature =
+      // actuator.actuator_ls_state[i].motor_temp;
+      // status_msg.actuator_states[motor_id].driver_state =
+      // actuator.actuator_ls_state[i].driver_state;
     }
 
-    //status_msg.light_control_enabled = state.light_state.enable_cmd_ctrl;
-    //status_msg.front_light_state.mode = state.light_state.front_light.mode;
-    //status_msg.front_light_state.custom_value =
-        //state.light_state.front_light.custom_value;
+    // status_msg.light_control_enabled = state.light_state.enable_cmd_ctrl;
+    // status_msg.front_light_state.mode = state.light_state.front_light.mode;
+    // status_msg.front_light_state.custom_value =
+    // state.light_state.front_light.custom_value;
     // status_msg.rear_light_state.mode = state.light_state.rear_light.mode;
     // status_msg.rear_light_state.custom_value =
     //     state.light_state.rear_light.custom_value;
@@ -130,7 +143,7 @@ class TracerMessenger {
     last_time_ = current_time_;
   }
 
- private:
+private:
   std::shared_ptr<TracerType> tracer_;
   rclcpp::Node *node_;
 
@@ -170,8 +183,7 @@ class TracerMessenger {
     }
     // ROS_INFO("Cmd received:%f, %f", msg->linear.x, msg->angular.z);
   }
-  void SetTracerMotionCommand(const geometry_msgs::msg::Twist::SharedPtr msg)
-  {
+  void SetTracerMotionCommand(const geometry_msgs::msg::Twist::SharedPtr msg) {
     tracer_->SetMotionCommand(msg->linear.x, msg->angular.z);
   }
 
@@ -180,62 +192,57 @@ class TracerMessenger {
       if (msg->cmd_ctrl_allowed) {
         LightCommandMessage cmd;
 
-        switch (msg->front_mode)
-        {
-          case tracer_msgs::msg::TracerLightCmd::LIGHT_CONST_OFF:
-          {
-            cmd.front_light.mode = CONST_OFF;
-            break;
-          }
-          case tracer_msgs::msg::TracerLightCmd::LIGHT_CONST_ON:
-          {
-            cmd.front_light.mode = CONST_ON;
-            break;
-          }
-          case tracer_msgs::msg::TracerLightCmd::LIGHT_BREATH:
-          {
-            cmd.front_light.mode = BREATH;
-            break;
-          }
-          case tracer_msgs::msg::TracerLightCmd::LIGHT_CUSTOM:
-          {
-            cmd.front_light.mode = CUSTOM;
-            cmd.front_light.custom_value = msg->front_custom_value;
-            break;
-          }
+        switch (msg->front_mode) {
+        case tracer_msgs::msg::TracerLightCmd::LIGHT_CONST_OFF: {
+          cmd.front_light.mode = CONST_OFF;
+          break;
+        }
+        case tracer_msgs::msg::TracerLightCmd::LIGHT_CONST_ON: {
+          cmd.front_light.mode = CONST_ON;
+          break;
+        }
+        case tracer_msgs::msg::TracerLightCmd::LIGHT_BREATH: {
+          cmd.front_light.mode = BREATH;
+          break;
+        }
+        case tracer_msgs::msg::TracerLightCmd::LIGHT_CUSTOM: {
+          cmd.front_light.mode = CUSTOM;
+          cmd.front_light.custom_value = msg->front_custom_value;
+          break;
+        }
         }
 
-          // switch (msg->rear_mode)
-          // {
-          //   case tracer_msgs::TracerLightCmd::LIGHT_CONST_OFF:
-          //   {
-          //       cmd.rear_light.mode = CONST_OFF;
-          //       break;
-          //   }
-          //   case tracer_msgs::TracerLightCmd::LIGHT_CONST_ON:
-          //   {
-          //       cmd.rear_light.mode = CONST_ON;
-          //       break;
-          //   }
-          //   case tracer_msgs::TracerLightCmd::LIGHT_BREATH:
-          //   {
-          //       cmd.rear_light.mode = BREATH;
-          //       break;
-          //   }
-          //   case tracer_msgs::TracerLightCmd::LIGHT_CUSTOM:
-          //   {
-          //       cmd.rear_light.mode = CUSTOM;
-          //       cmd.rear_light.custom_value = msg->rear_custom_value;
-          //       break;
-          //   }
-          // }
-        tracer_->SetLightCommand(cmd.front_light.mode,cmd.front_light.custom_value);
-        } 
-      } else {
+        // switch (msg->rear_mode)
+        // {
+        //   case tracer_msgs::TracerLightCmd::LIGHT_CONST_OFF:
+        //   {
+        //       cmd.rear_light.mode = CONST_OFF;
+        //       break;
+        //   }
+        //   case tracer_msgs::TracerLightCmd::LIGHT_CONST_ON:
+        //   {
+        //       cmd.rear_light.mode = CONST_ON;
+        //       break;
+        //   }
+        //   case tracer_msgs::TracerLightCmd::LIGHT_BREATH:
+        //   {
+        //       cmd.rear_light.mode = BREATH;
+        //       break;
+        //   }
+        //   case tracer_msgs::TracerLightCmd::LIGHT_CUSTOM:
+        //   {
+        //       cmd.rear_light.mode = CUSTOM;
+        //       cmd.rear_light.custom_value = msg->rear_custom_value;
+        //       break;
+        //   }
+        // }
+        tracer_->SetLightCommand(cmd.front_light.mode,
+                                 cmd.front_light.custom_value);
+      }
+    } else {
       std::cout << "simulated robot received light control cmd" << std::endl;
     }
   }
-  
 
   geometry_msgs::msg::Quaternion createQuaternionMsgFromYaw(double yaw) {
     tf2::Quaternion q;
@@ -296,6 +303,6 @@ class TracerMessenger {
     odom_pub_->publish(odom_msg);
   }
 };
-}  // namespace westonrobot
+} // namespace westonrobot
 
 #endif /* SCOUT_MESSENGER_HPP */
