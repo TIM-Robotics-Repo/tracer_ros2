@@ -17,7 +17,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/twist.hpp>
-#include <tf2_ros/transform_broadcaster.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include "tracer_msgs/msg/tracer_status.hpp"
@@ -58,8 +57,6 @@ class TracerMessenger {
         "/light_control", 5,
         std::bind(&TracerMessenger::LightCmdCallback, this,
                   std::placeholders::_1));
-
-    tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(node_);
   }
 
   void PublishStateToROS() {
@@ -78,7 +75,7 @@ class TracerMessenger {
     // publish tracer state message
     tracer_msgs::msg::TracerStatus status_msg;
 
-    status_msg.header.stamp = current_time_;
+    //status_msg.header.stamp = current_time_;
 
     status_msg.linear_velocity = state.motion_state.linear_velocity;
     status_msg.angular_velocity = state.motion_state.angular_velocity;
@@ -89,6 +86,19 @@ class TracerMessenger {
     status_msg.battery_voltage = state.system_state.battery_voltage;
 
     auto actuator = tracer_->GetActuatorState();
+
+    static auto convert_sdkclock_to_double_epoch_nano =
+        [](const std::chrono::time_point<SdkClock> &stamp) {
+          return static_cast<double>(
+              std::chrono::time_point_cast<std::chrono::nanoseconds>(stamp)
+                  .time_since_epoch()
+                  .count());
+        };
+    auto time_offset = node_->now().nanoseconds() -
+                       convert_sdkclock_to_double_epoch_nano(SdkClock::now());
+    status_msg.header.stamp =
+        rclcpp::Time(time_offset + convert_sdkclock_to_double_epoch_nano(
+                                       actuator.time_stamp));
 
     for (int i = 0; i < 2; ++i) {
       // actuator_hs_state
@@ -150,8 +160,6 @@ class TracerMessenger {
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr motion_cmd_sub_;
   rclcpp::Subscription<tracer_msgs::msg::TracerLightCmd>::SharedPtr
       light_cmd_sub_;
-
-  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   // speed variables
   double position_x_ = 0.0;
@@ -264,19 +272,6 @@ class TracerMessenger {
 
     geometry_msgs::msg::Quaternion odom_quat =
         createQuaternionMsgFromYaw(theta_);
-
-    // publish tf transformation
-    geometry_msgs::msg::TransformStamped tf_msg;
-    tf_msg.header.stamp = current_time_;
-    tf_msg.header.frame_id = odom_frame_;
-    tf_msg.child_frame_id = base_frame_;
-
-    tf_msg.transform.translation.x = position_x_;
-    tf_msg.transform.translation.y = position_y_;
-    tf_msg.transform.translation.z = 0.0;
-    tf_msg.transform.rotation = odom_quat;
-
-    tf_broadcaster_->sendTransform(tf_msg);
 
     // publish odometry and tf messages
     nav_msgs::msg::Odometry odom_msg;
