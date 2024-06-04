@@ -88,6 +88,9 @@ class TracerMessenger {
 
     auto time_offset = node_->now().nanoseconds() -
                        static_cast<double>(convert_sdkclock_to_uint64_epoch_nano(SdkClock::now()));
+
+    tracer_msgs::msg::TracerStatus status_msg;
+
     status_msg.header.stamp =
         rclcpp::Time(time_offset + static_cast<double>(actuator_stamp));
 
@@ -116,10 +119,6 @@ class TracerMessenger {
     }
 
     auto state = tracer_->GetRobotState();
-
-    // publish tracer state message
-    tracer_msgs::msg::TracerStatus status_msg;
-
     //status_msg.header.stamp = current_time_;
 
     status_msg.linear_velocity = state.motion_state.linear_velocity;
