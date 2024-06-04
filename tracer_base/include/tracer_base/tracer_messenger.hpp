@@ -70,35 +70,26 @@ class TracerMessenger {
     }
     double dt = (current_time_ - last_time_).seconds();
 
-    auto state = tracer_->GetRobotState();
-
-    // publish tracer state message
-    tracer_msgs::msg::TracerStatus status_msg;
-
-    //status_msg.header.stamp = current_time_;
-
-    status_msg.linear_velocity = state.motion_state.linear_velocity;
-    status_msg.angular_velocity = state.motion_state.angular_velocity;
-
-    //status_msg.vehicle_state = state.system_state.vehicle_state;
-    status_msg.control_mode = state.system_state.control_mode;
-    status_msg.error_code = state.system_state.error_code;
-    status_msg.battery_voltage = state.system_state.battery_voltage;
-
     auto actuator = tracer_->GetActuatorState();
 
-    static auto convert_sdkclock_to_double_epoch_nano =
+    static auto convert_sdkclock_to_uint64_epoch_nano =
         [](const std::chrono::time_point<SdkClock> &stamp) {
-          return static_cast<double>(
+          return static_cast<uint64_t>(
               std::chrono::time_point_cast<std::chrono::nanoseconds>(stamp)
                   .time_since_epoch()
                   .count());
         };
+
+    auto actuator_stamp = convert_sdkclock_to_uint64_epoch_nano(actuator.time_stamp);
+    if (actuator_stamp <= last_actuator_stamp_) {
+      return;
+    }
+    last_actuator_stamp_ = actuator_stamp;
+
     auto time_offset = node_->now().nanoseconds() -
-                       convert_sdkclock_to_double_epoch_nano(SdkClock::now());
+                       static_cast<double>(convert_sdkclock_to_uint64_epoch_nano(SdkClock::now()));
     status_msg.header.stamp =
-        rclcpp::Time(time_offset + convert_sdkclock_to_double_epoch_nano(
-                                       actuator.time_stamp));
+        rclcpp::Time(time_offset + static_cast<double>(actuator_stamp));
 
     for (int i = 0; i < 2; ++i) {
       // actuator_hs_state
@@ -123,6 +114,21 @@ class TracerMessenger {
       //status_msg.actuator_states[motor_id].driver_state =
           //actuator.actuator_ls_state[i].driver_state;
     }
+
+    auto state = tracer_->GetRobotState();
+
+    // publish tracer state message
+    tracer_msgs::msg::TracerStatus status_msg;
+
+    //status_msg.header.stamp = current_time_;
+
+    status_msg.linear_velocity = state.motion_state.linear_velocity;
+    status_msg.angular_velocity = state.motion_state.angular_velocity;
+
+    //status_msg.vehicle_state = state.system_state.vehicle_state;
+    status_msg.control_mode = state.system_state.control_mode;
+    status_msg.error_code = state.system_state.error_code;
+    status_msg.battery_voltage = state.system_state.battery_voltage;
 
     //status_msg.light_control_enabled = state.light_state.enable_cmd_ctrl;
     //status_msg.front_light_state.mode = state.light_state.front_light.mode;
@@ -168,6 +174,8 @@ class TracerMessenger {
 
   rclcpp::Time last_time_;
   rclcpp::Time current_time_;
+
+  uint64_t last_actuator_stamp_ = 0;
 
   void TwistCmdCallback(const geometry_msgs::msg::Twist::SharedPtr msg) {
     if (!simulated_robot_) {
