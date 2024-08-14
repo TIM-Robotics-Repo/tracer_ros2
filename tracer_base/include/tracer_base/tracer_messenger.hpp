@@ -21,6 +21,7 @@
 
 #include "tracer_msgs/msg/tracer_status.hpp"
 #include "tracer_msgs/msg/tracer_light_cmd.hpp"
+#include "tim_common_utils/lifecycle_node.h"
 
 #include "ugv_sdk/mobile_robot/tracer_robot.hpp"
 #include "ugv_sdk/utilities/protocol_detector.hpp"
@@ -29,7 +30,7 @@ namespace westonrobot {
 template <typename TracerType>
 class TracerMessenger {
  public:
-  TracerMessenger(std::shared_ptr<TracerType> tracer, rclcpp::Node *node)
+  TracerMessenger(std::shared_ptr<TracerType> tracer, std::shared_ptr<tim_common_utils::LifecycleNode> node)
       : tracer_(tracer), node_(node) {}
 
   void SetOdometryFrame(std::string frame) { odom_frame_ = frame; }
@@ -42,26 +43,29 @@ class TracerMessenger {
   }
 
   void SetupSubscription() {
+    auto node = node_.lock();
     // odometry publisher
     odom_pub_ =
-        node_->create_publisher<nav_msgs::msg::Odometry>(odom_topic_name_, 50);
-    status_pub_ = node_->create_publisher<tracer_msgs::msg::TracerStatus>(
+        node->create_publisher<nav_msgs::msg::Odometry>(odom_topic_name_, 50);
+    status_pub_ = node->create_publisher<tracer_msgs::msg::TracerStatus>(
         "/tracer_status", 10);
 
     // cmd subscriber
-    motion_cmd_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>(
+    motion_cmd_sub_ = node->create_subscription<geometry_msgs::msg::Twist>(
         "/cmd_vel", 5,
         std::bind(&TracerMessenger::TwistCmdCallback, this,
                   std::placeholders::_1));
-    light_cmd_sub_ = node_->create_subscription<tracer_msgs::msg::TracerLightCmd>(
+    light_cmd_sub_ = node->create_subscription<tracer_msgs::msg::TracerLightCmd>(
         "/light_control", 5,
         std::bind(&TracerMessenger::LightCmdCallback, this,
                   std::placeholders::_1));
   }
 
   void PublishStateToROS() {
-    current_time_ = node_->get_clock()->now();
-
+    {
+      auto node = node_.lock();
+      current_time_ = node->get_clock()->now();
+    }
     static bool init_run = true;
     if (init_run) {
       last_time_ = current_time_;
@@ -86,13 +90,15 @@ class TracerMessenger {
     }
     last_actuator_stamp_ = actuator_stamp;
 
-    auto time_offset = node_->now().nanoseconds() -
-                       static_cast<double>(convert_sdkclock_to_uint64_epoch_nano(SdkClock::now()));
-
     tracer_msgs::msg::TracerStatus status_msg;
 
-    status_msg.header.stamp =
-        rclcpp::Time(time_offset + static_cast<double>(actuator_stamp));
+    {
+      auto node = node_.lock();
+      auto time_offset = node->now().nanoseconds() -
+                        static_cast<double>(convert_sdkclock_to_uint64_epoch_nano(SdkClock::now()));
+      status_msg.header.stamp =
+          rclcpp::Time(time_offset + static_cast<double>(actuator_stamp));
+    }
 
     for (int i = 0; i < 2; ++i) {
       // actuator_hs_state
@@ -147,7 +153,7 @@ class TracerMessenger {
 
  private:
   std::shared_ptr<TracerType> tracer_;
-  rclcpp::Node *node_;
+  std::weak_ptr<tim_common_utils::LifecycleNode> node_;
 
   std::string odom_frame_;
   std::string base_frame_;
