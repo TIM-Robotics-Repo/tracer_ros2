@@ -29,10 +29,10 @@ class TracerBaseRos : public tim_common_utils::LifecycleNode {
   void Stop();
 
  private:
-  tim_common_utils::LifecycleNode::CallbackReturn on_configure(const rclcpp_lifecycle::State & state);
-  tim_common_utils::LifecycleNode::CallbackReturn on_activate(const rclcpp_lifecycle::State & state);
-  tim_common_utils::LifecycleNode::CallbackReturn on_deactivate(const rclcpp_lifecycle::State & state);
-  tim_common_utils::LifecycleNode::CallbackReturn on_cleanup(const rclcpp_lifecycle::State & state);
+  tim_common_utils::LifecycleNode::CallbackReturn on_configure(const rclcpp_lifecycle::State & state) override;
+  tim_common_utils::LifecycleNode::CallbackReturn on_activate(const rclcpp_lifecycle::State & state) override;
+  tim_common_utils::LifecycleNode::CallbackReturn on_deactivate(const rclcpp_lifecycle::State & state) override;
+  tim_common_utils::LifecycleNode::CallbackReturn on_cleanup(const rclcpp_lifecycle::State & state) override;
 
   std::string port_name_;
   std::string odom_frame_;
