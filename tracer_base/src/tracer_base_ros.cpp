@@ -156,22 +156,21 @@ tim_common_utils::LifecycleNode::CallbackReturn TracerBaseRos::on_activate(
   if (simulated_robot_) messenger_->SetSimulationMode(sim_control_rate_);
 
   // connect to robot and setup ROS subscription
-  if (port_name_.find("can") != std::string::npos) {
-    if (robot_->Connect(port_name_)) {
-      robot_->EnableCommandedMode();
-      std::cout << "Using CAN bus to talk with the robot" << std::endl;
-    } else {
-      std::cout << "Failed to connect to the robot CAN bus" << std::endl;
-      return tim_common_utils::LifecycleNode::CallbackReturn::FAILURE;
-    }
-  } else {
+  if (port_name_.find("can") == std::string::npos) {
     std::cout << "Please check the specified port name is a CAN port"
               << std::endl;
     return tim_common_utils::LifecycleNode::CallbackReturn::FAILURE;
   }
-  // publish robot state at 50Hz while listening to twist commands
+  if (!robot_->Connect(port_name_)) {
+    std::cout << "Failed to connect to the robot CAN bus" << std::endl;
+    return tim_common_utils::LifecycleNode::CallbackReturn::FAILURE;
+  }
+  robot_->EnableCommandedMode();
+  std::cout << "Using CAN bus to talk with the robot" << std::endl;
+
+  // publish robot state at 200Hz while listening to twist commands
   messenger_->SetupSubscription();
-  
+
   keep_running_ = true;
   publish_timer_ = this->create_wall_timer(std::chrono::milliseconds(5), [this](){
     if (!this->keep_running_) {
