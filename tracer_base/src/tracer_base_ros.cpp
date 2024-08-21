@@ -112,7 +112,7 @@ void TracerBaseRos::Run() {
     return;
   }
 
-  // publish robot state at 50Hz while listening to twist commands
+  // publish robot state at 200Hz while listening to twist commands
   messenger->SetupSubscription();
   keep_running_ = true;
   rclcpp::Rate rate(200);
