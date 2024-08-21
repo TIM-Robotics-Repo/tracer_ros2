@@ -29,6 +29,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tracer_msgs REQUIRED)
 find_package(ugv_sdk REQUIRED)
+find_package(tim_common_utils REQUIRED)
 
 include_directories(
   include
@@ -44,6 +45,7 @@ set(DEPENDENCIES
   "tracer_msgs"
   "sensor_msgs"
   "tf2_geometry_msgs"
+  "tim_common_utils"
 )
 
 ## Main body
@@ -56,9 +58,9 @@ set(DEPENDENCIES
 
 add_executable(tracer_base_node 
     src/tracer_base_ros.cpp
-    src/tracer_base_node.cpp)
+    src/tracer_base_node_spin.cpp)
 target_link_libraries(tracer_base_node ugv_sdk)
-ament_target_dependencies(tracer_base_node rclcpp tf2 tf2_ros std_msgs nav_msgs sensor_msgs tf2_geometry_msgs tracer_msgs)
+ament_target_dependencies(tracer_base_node rclcpp tf2 tf2_ros std_msgs nav_msgs sensor_msgs tf2_geometry_msgs tracer_msgs tim_common_utils)
 
 install(TARGETS tracer_base_node
   DESTINATION lib/${PROJECT_NAME})

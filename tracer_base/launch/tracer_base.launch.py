@@ -30,6 +30,7 @@ def generate_launch_description():
     
     tracer_base_node = launch_ros.actions.Node(
         package='tracer_base',
+        name='tracer_base_node',
         executable='tracer_base_node',
         output='screen',
         emulate_tty=True,

@@ -13,12 +13,14 @@
 #include <atomic>
 #include <memory>
 
-#include <rclcpp/rclcpp.hpp>
+#include "rclcpp/rclcpp.hpp"
+#include "tim_common_utils/lifecycle_node.h"
 
 #include "ugv_sdk/mobile_robot/tracer_robot.hpp"
+#include "tracer_base/tracer_messenger.hpp"
 
 namespace westonrobot {
-class TracerBaseRos : public rclcpp::Node {
+class TracerBaseRos : public tim_common_utils::LifecycleNode {
  public:
   TracerBaseRos(std::string node_name);
 
@@ -27,6 +29,11 @@ class TracerBaseRos : public rclcpp::Node {
   void Stop();
 
  private:
+  tim_common_utils::LifecycleNode::CallbackReturn on_configure(const rclcpp_lifecycle::State & state) override;
+  tim_common_utils::LifecycleNode::CallbackReturn on_activate(const rclcpp_lifecycle::State & state) override;
+  tim_common_utils::LifecycleNode::CallbackReturn on_deactivate(const rclcpp_lifecycle::State & state) override;
+  tim_common_utils::LifecycleNode::CallbackReturn on_cleanup(const rclcpp_lifecycle::State & state) override;
+
   std::string port_name_;
   std::string odom_frame_;
   std::string base_frame_;
@@ -43,6 +50,9 @@ class TracerBaseRos : public rclcpp::Node {
   // std::shared_ptr<TracerMiniOmniRobot> omni_robot_;
 
   std::atomic<bool> keep_running_;
+  rclcpp::TimerBase::SharedPtr publish_timer_;
+
+  std::shared_ptr<TracerMessenger<TracerRobot>> messenger_;
 
   void LoadParameters();
 };

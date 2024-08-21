@@ -9,25 +9,11 @@
 
 #include "tracer_base/tracer_base_ros.hpp"
 
-#include "tracer_base/tracer_messenger.hpp"
 #include "ugv_sdk/utilities/protocol_detector.hpp"
 
 namespace westonrobot {
 TracerBaseRos::TracerBaseRos(std::string node_name)
-    : rclcpp::Node(node_name), keep_running_(false) {
-    
-/***update for humble***/
-  this->declare_parameter("port_name", rclcpp::ParameterValue("can0"));   //声明参数
-
-  this->declare_parameter("odom_frame", rclcpp::ParameterValue("odom"));
-  this->declare_parameter("base_frame", rclcpp::ParameterValue("base_link"));
-  this->declare_parameter("odom_topic_name", rclcpp::ParameterValue("odom"));
-
-  this->declare_parameter("is_tracer_mini", rclcpp::ParameterValue(false));
-  this->declare_parameter("simulated_robot", rclcpp::ParameterValue(false));
-  this->declare_parameter("control_rate", rclcpp::ParameterValue(50));
- /***update for humble***/
-  LoadParameters();
+    : tim_common_utils::LifecycleNode(node_name), keep_running_(false) {
 }
 
 void TracerBaseRos::LoadParameters() {
@@ -87,11 +73,24 @@ bool TracerBaseRos::Initialize() {
 void TracerBaseRos::Stop() { keep_running_ = false; }
 
 void TracerBaseRos::Run() {
+  /***update for humble***/
+  this->declare_parameter("port_name", rclcpp::ParameterValue("can0"));   //声明参数
+
+  this->declare_parameter("odom_frame", rclcpp::ParameterValue("odom"));
+  this->declare_parameter("base_frame", rclcpp::ParameterValue("base_link"));
+  this->declare_parameter("odom_topic_name", rclcpp::ParameterValue("odom"));
+
+  this->declare_parameter("is_tracer_mini", rclcpp::ParameterValue(false));
+  this->declare_parameter("simulated_robot", rclcpp::ParameterValue(false));
+  this->declare_parameter("control_rate", rclcpp::ParameterValue(50));
+  /***update for humble***/
+  LoadParameters();
+
   robot_ = std::make_shared<TracerRobot>();
   // instantiate a ROS messenger
   // TracerMessenger messenger(robot_.get(),this);
   std::unique_ptr<TracerMessenger<TracerRobot>> messenger =
-      std::unique_ptr<TracerMessenger<TracerRobot>>(new TracerMessenger<TracerRobot>(robot_,this));
+      std::unique_ptr<TracerMessenger<TracerRobot>>(new TracerMessenger<TracerRobot>(robot_,shared_from_this()));
 
   messenger->SetOdometryFrame(odom_frame_);
   messenger->SetBaseFrame(base_frame_);
@@ -113,15 +112,87 @@ void TracerBaseRos::Run() {
     return;
   }
 
-  // publish robot state at 50Hz while listening to twist commands
+  // publish robot state at 200Hz while listening to twist commands
   messenger->SetupSubscription();
   keep_running_ = true;
   rclcpp::Rate rate(200);
   while (keep_running_) {
     messenger->PublishStateToROS();
-    rclcpp::spin_some(shared_from_this());
+    rclcpp::spin_some(get_node_base_interface());
     rate.sleep();
   }
-  
+}
+
+tim_common_utils::LifecycleNode::CallbackReturn TracerBaseRos::on_configure(
+    const rclcpp_lifecycle::State & /*state*/) {
+  RCLCPP_INFO(this->get_logger(), "Configuring");
+  /***update for humble***/
+  this->declare_parameter("port_name", rclcpp::ParameterValue("can0"));   //声明参数
+
+  this->declare_parameter("odom_frame", rclcpp::ParameterValue("odom"));
+  this->declare_parameter("base_frame", rclcpp::ParameterValue("base_link"));
+  this->declare_parameter("odom_topic_name", rclcpp::ParameterValue("odom"));
+
+  this->declare_parameter("is_tracer_mini", rclcpp::ParameterValue(false));
+  this->declare_parameter("simulated_robot", rclcpp::ParameterValue(false));
+  this->declare_parameter("control_rate", rclcpp::ParameterValue(50));
+  /***update for humble***/
+  LoadParameters();
+
+  robot_ = std::make_shared<TracerRobot>();
+  return tim_common_utils::LifecycleNode::CallbackReturn::SUCCESS;
+}
+
+tim_common_utils::LifecycleNode::CallbackReturn TracerBaseRos::on_activate(
+    const rclcpp_lifecycle::State & /*state*/) {
+  RCLCPP_INFO(this->get_logger(), "Activating");
+  // instantiate a ROS messenger
+  // TracerMessenger messenger(robot_.get(),this);
+  messenger_ = std::make_shared<TracerMessenger<TracerRobot>>(robot_,shared_from_this());
+
+  messenger_->SetOdometryFrame(odom_frame_);
+  messenger_->SetBaseFrame(base_frame_);
+  messenger_->SetOdometryTopicName(odom_topic_name_);
+  if (simulated_robot_) messenger_->SetSimulationMode(sim_control_rate_);
+
+  // connect to robot and setup ROS subscription
+  if (port_name_.find("can") == std::string::npos) {
+    std::cout << "Please check the specified port name is a CAN port"
+              << std::endl;
+    return tim_common_utils::LifecycleNode::CallbackReturn::FAILURE;
+  }
+  if (!robot_->Connect(port_name_)) {
+    std::cout << "Failed to connect to the robot CAN bus" << std::endl;
+    return tim_common_utils::LifecycleNode::CallbackReturn::FAILURE;
+  }
+  robot_->EnableCommandedMode();
+  std::cout << "Using CAN bus to talk with the robot" << std::endl;
+
+  // publish robot state at 200Hz while listening to twist commands
+  messenger_->SetupSubscription();
+
+  keep_running_ = true;
+  publish_timer_ = this->create_wall_timer(std::chrono::milliseconds(5), [this](){
+    if (!this->keep_running_) {
+      this->publish_timer_->cancel();
+      return;
+    }
+    this->messenger_->PublishStateToROS();
+  });
+  return tim_common_utils::LifecycleNode::CallbackReturn::SUCCESS;
+}
+
+tim_common_utils::LifecycleNode::CallbackReturn TracerBaseRos::on_deactivate(
+    const rclcpp_lifecycle::State & /*state*/) {
+  RCLCPP_INFO(this->get_logger(), "Deactivating");
+  publish_timer_.reset();
+  messenger_.reset();
+  return tim_common_utils::LifecycleNode::CallbackReturn::SUCCESS;
+}
+
+tim_common_utils::LifecycleNode::CallbackReturn TracerBaseRos::on_cleanup(
+    const rclcpp_lifecycle::State & /*state*/) {
+  RCLCPP_INFO(this->get_logger(), "Cleaning up");
+  return tim_common_utils::LifecycleNode::CallbackReturn::SUCCESS;
 }
 }  // namespace westonrobot
